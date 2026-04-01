@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shiva Dugital Library — Study Library Management</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar" id="navbar">
+  <div class="nav-brand">
+    <div class="brand-icon">📚</div>
+    <div class="brand-text">
+      <span class="brand-name">Shiva Digital Library</span>
+      <span class="brand-tagline">Digital Study Library</span>
+    </div>
+  </div>
+  <div class="nav-center">
+    <div class="nav-stat"><span class="stat-num" id="nav-occupied">0</span><span class="stat-lbl">Occupied</span></div>
+    <div class="nav-divider"></div>
+    <div class="nav-stat"><span class="stat-num" id="nav-empty">42</span><span class="stat-lbl">Empty</span></div>
+    <div class="nav-divider"></div>
+    <div class="nav-stat"><span class="stat-num" id="nav-total">42</span><span class="stat-lbl">Total Seats</span></div>
+  </div>
+  <div class="nav-actions">
+    <button class="theme-toggle" id="themeToggle" title="Toggle Theme">🌙</button>
+    <button class="btn-admin" id="adminLoginBtn">⚙️ Admin</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="heroSection">
+  <div class="hero-bg">
+    <div class="hero-orb orb1"></div>
+    <div class="hero-orb orb2"></div>
+    <div class="hero-orb orb3"></div>
+    <div class="grid-overlay"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-badge">✦ 42 Premium Study Seats Available</div>
+    <h1 class="hero-title">Your Gateway to<br><span class="gradient-text">Focused Learning</span></h1>
+    <p class="hero-sub">Search your seat, track your shifts, and manage your library membership seamlessly.</p>
+    <div class="hero-search-card">
+      <div class="search-row">
+        <div class="search-field">
+          <label>Seat Number</label>
+          <input type="number" id="searchSeat" placeholder="e.g. 12" min="1" max="42">
+        </div>
+        <div class="search-field">
+          <label>Year</label>
+          <select id="searchYear">
+            <option value="">All Years</option>
+          </select>
+        </div>
+        <button class="btn-search" onclick="searchStudent()">🔍 Search</button>
+      </div>
+      <div class="quick-search-row">
+        <span class="quick-label">Quick:</span>
+        <button class="quick-btn" onclick="searchAll()">View All Records</button>
+        <button class="quick-btn" onclick="scrollToSeats()">See Seat Grid</button>
+      </div>
+    </div>
+  </div>
+  <div class="hero-visual">
+    <div class="floating-card fc1">
+      <span class="fc-icon">🪑</span>
+      <div><strong>Morning Shift</strong><small>7AM – 1PM • ₹500</small></div>
+    </div>
+    <div class="floating-card fc2">
+      <span class="fc-icon">🌆</span>
+      <div><strong>Evening Shift</strong><small>1PM – 7PM • ₹500</small></div>
+    </div>
+    <div class="floating-card fc3">
+      <span class="fc-icon">🌙</span>
+      <div><strong>Night Shift</strong><small>Custom Hours • ₹500</small></div>
+    </div>
+    <div class="floating-card fc4">
+      <span class="fc-icon">☀️</span>
+      <div><strong>Double Shift</strong><small>Full Day • ₹800</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- SEARCH RESULTS -->
+<section class="results-section" id="resultsSection" style="display:none">
+  <div class="container">
+    <div class="section-header">
+      <h2>Search Results</h2>
+      <button class="btn-close-results" onclick="closeResults()">✕ Close</button>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table" id="resultsTable">
+        <thead>
+          <tr>
+            <th>Seat</th>
+            <th>Name</th>
+            <th>Admission</th>
+            <th>Shift</th>
+            <th>Month</th>
+            <th>Year</th>
+            <th>Fee (₹)</th>
+            <th>Paid Date</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- SEAT GRID -->
+<section class="seats-section" id="seatsSection">
+  <div class="container">
+    <div class="section-header">
+      <div>
+        <h2>Seat Map</h2>
+        <p class="section-sub">Click any seat to view details</p>
+      </div>
+      <div class="legend">
+        <span class="legend-item"><span class="dot green"></span>Fee Paid</span>
+        <span class="legend-item"><span class="dot red"></span>Fee Pending</span>
+        <span class="legend-item"><span class="dot gray"></span>Empty</span>
+      </div>
+    </div>
+    <div class="month-year-filter">
+      <select id="seatGridMonth" onchange="renderSeatGrid()">
+        <option value="">Current Month</option>
+        <option value="1">January</option><option value="2">February</option>
+        <option value="3">March</option><option value="4">April</option>
+        <option value="5">May</option><option value="6">June</option>
+        <option value="7">July</option><option value="8">August</option>
+        <option value="9">September</option><option value="10">October</option>
+        <option value="11">November</option><option value="12">December</option>
+      </select>
+      <select id="seatGridYear" onchange="renderSeatGrid()">
+      </select>
+    </div>
+    <div class="seat-grid" id="seatGrid"></div>
+  </div>
+</section>
+
+<!-- SEAT DETAIL MODAL -->
+<div class="modal-overlay" id="seatModal" onclick="closeSeatModal(event)">
+  <div class="modal-card">
+    <button class="modal-close" onclick="document.getElementById('seatModal').classList.remove('active')">✕</button>
+    <div class="modal-header">
+      <div class="modal-seat-badge" id="modalSeatNum">S-01</div>
+      <div>
+        <h3 id="modalStudentName">—</h3>
+        <p id="modalStudentShift">—</p>
+      </div>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- ADMIN LOGIN MODAL -->
+<div class="modal-overlay" id="loginModal" onclick="closeLoginModal(event)">
+  <div class="modal-card login-card">
+    <button class="modal-close" onclick="document.getElementById('loginModal').classList.remove('active')">✕</button>
+    <div class="login-icon">🔐</div>
+    <h2>Admin Access</h2>
+    <p>Enter your credentials to continue</p>
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="loginUser" placeholder="admin" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="••••••••">
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <button class="btn-primary full-width" onclick="adminLogin()">Login to Dashboard</button>
+  </div>
+</div>
+
+<!-- ADMIN DASHBOARD -->
+<div class="admin-overlay" id="adminDashboard" style="display:none">
+  
+  <!-- ADMIN SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="brand-icon">📚</div>
+      <span>LibraNova</span>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item active" onclick="showAdminTab('dashboard')" id="tab-dashboard">
+        <span class="nav-icon">📊</span><span>Dashboard</span>
+      </a>
+      <a class="nav-item" onclick="showAdminTab('students')" id="tab-students">
+        <span class="nav-icon">👥</span><span>Students</span>
+      </a>
+      <a class="nav-item" onclick="showAdminTab('addStudent')" id="tab-addStudent">
+        <span class="nav-icon">➕</span><span>Add Student</span>
+      </a>
+      <a class="nav-item" onclick="showAdminTab('fees')" id="tab-fees">
+        <span class="nav-icon">💰</span><span>Add Fee</span>
+      </a>
+      <a class="nav-item" onclick="showAdminTab('income')" id="tab-income">
+        <span class="nav-icon">📈</span><span>Income Report</span>
+      </a>
+      <a class="nav-item" onclick="showAdminTab('seats')" id="tab-seats">
+        <span class="nav-icon">🪑</span><span>Seat Grid</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="btn-logout" onclick="adminLogout()">🚪 Logout</button>
+    </div>
+  </aside>
+
+  <!-- ADMIN MAIN -->
+  <main class="admin-main">
+    
+    <!-- TOP BAR -->
+    <div class="admin-topbar">
+      <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+      <div class="topbar-title" id="topbarTitle">Dashboard</div>
+      <div class="topbar-right">
+        <span class="admin-badge">👤 Admin</span>
+      </div>
+    </div>
+
+    <!-- DASHBOARD TAB -->
+    <div class="admin-tab active" id="adminTab-dashboard">
+      <div class="tab-header">
+        <h2>Dashboard Overview</h2>
+        <div class="date-display" id="currentDate"></div>
+      </div>
+      
+      <!-- Stats Cards -->
+      <div class="stats-grid">
+        <div class="stat-card blue">
+          <div class="stat-icon">🪑</div>
+          <div class="stat-info">
+            <div class="stat-value" id="dash-total">42</div>
+            <div class="stat-label">Total Seats</div>
+          </div>
+          <div class="stat-bg-icon">🪑</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-icon">✅</div>
+          <div class="stat-info">
+            <div class="stat-value" id="dash-occupied">0</div>
+            <div class="stat-label">Occupied Seats</div>
+          </div>
+          <div class="stat-bg-icon">✅</div>
+        </div>
+        <div class="stat-card orange">
+          <div class="stat-icon">⬜</div>
+          <div class="stat-info">
+            <div class="stat-value" id="dash-empty">42</div>
+            <div class="stat-label">Empty Seats</div>
+          </div>
+          <div class="stat-bg-icon">⬜</div>
+        </div>
+        <div class="stat-card cyan">
+          <div class="stat-icon">💰</div>
+          <div class="stat-info">
+            <div class="stat-value" id="dash-monthly">₹0</div>
+            <div class="stat-label">This Month Income</div>
+          </div>
+          <div class="stat-bg-icon">💰</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-icon">📅</div>
+          <div class="stat-info">
+            <div class="stat-value" id="dash-yearly">₹0</div>
+            <div class="stat-label">This Year Income</div>
+          </div>
+          <div class="stat-bg-icon">📅</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-icon">⚠️</div>
+          <div class="stat-info">
+            <div class="stat-value" id="dash-pending">0</div>
+            <div class="stat-label">Fee Pending</div>
+          </div>
+          <div class="stat-bg-icon">⚠️</div>
+        </div>
+      </div>
+
+      <!-- Mini Seat Grid in Dashboard -->
+      <div class="dash-section-row">
+        <div class="dash-card wide">
+          <h3 class="dash-card-title">📊 Monthly Income Chart</h3>
+          <div class="month-filter-row">
+            <select id="dash-chart-year" onchange="renderIncomeChart()"></select>
+          </div>
+          <div class="income-chart" id="incomeChart"></div>
+        </div>
+        <div class="dash-card">
+          <h3 class="dash-card-title">🪑 Quick Seat View</h3>
+          <div class="mini-seat-grid" id="miniSeatGrid"></div>
+        </div>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="dash-card full-width">
+        <h3 class="dash-card-title">🕐 Recent Activity</h3>
+        <div class="activity-list" id="activityList"></div>
+      </div>
+    </div>
+
+    <!-- STUDENTS TAB -->
+    <div class="admin-tab" id="adminTab-students">
+      <div class="tab-header">
+        <h2>All Students</h2>
+        <div class="header-actions">
+          <input type="text" class="search-input" id="studentSearch" placeholder="🔍 Search name or seat..." oninput="filterStudents()">
+          <select id="filterShift" onchange="filterStudents()">
+            <option value="">All Shifts</option>
+            <option>Morning</option><option>Evening</option><option>Double Shift</option><option>Night</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="data-table" id="studentsTable">
+          <thead>
+            <tr>
+              <th>Seat</th><th>Name</th><th>Admission</th><th>Shift</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="studentsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ADD STUDENT TAB -->
+    <div class="admin-tab" id="adminTab-addStudent">
+      <div class="tab-header">
+        <h2 id="addStudentTitle">Add New Student</h2>
+      </div>
+      <div class="form-card">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Seat Number <span class="req">*</span></label>
+            <input type="number" id="f-seat" min="1" max="42" placeholder="1 – 42" id="f-seat">
+          </div>
+          <div class="form-group">
+            <label>Full Name <span class="req">*</span></label>
+            <input type="text" id="f-name" placeholder="Student full name">
+          </div>
+          <div class="form-group">
+            <label>Admission Date <span class="req">*</span></label>
+            <input type="date" id="f-admDate">
+          </div>
+          <div class="form-group">
+            <label>Shift <span class="req">*</span></label>
+            <select id="f-shift">
+              <option value="">Select Shift</option>
+              <option>Morning</option><option>Evening</option><option>Double Shift</option><option>Night</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="tel" id="f-phone" placeholder="Optional">
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <input type="text" id="f-notes" placeholder="Optional notes">
+          </div>
+        </div>
+        <input type="hidden" id="f-editSeat">
+        <div class="form-actions">
+          <button class="btn-primary" onclick="saveStudent()">💾 Save Student</button>
+          <button class="btn-secondary" onclick="clearStudentForm()">✕ Clear</button>
+        </div>
+        <div class="form-msg" id="studentFormMsg"></div>
+      </div>
+    </div>
+
+    <!-- FEES TAB -->
+    <div class="admin-tab" id="adminTab-fees">
+      <div class="tab-header">
+        <h2>Add Monthly Fee</h2>
+      </div>
+      <div class="form-card">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Seat Number <span class="req">*</span></label>
+            <select id="ff-seat" onchange="autoFillFeeForm()">
+              <option value="">Select Seat</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Student Name</label>
+            <input type="text" id="ff-name" readonly placeholder="Auto-filled">
+          </div>
+          <div class="form-group">
+            <label>Shift</label>
+            <input type="text" id="ff-shift" readonly placeholder="Auto-filled">
+          </div>
+          <div class="form-group">
+            <label>Fee Amount (₹) <span class="req">*</span></label>
+            <input type="number" id="ff-amount" placeholder="e.g. 500">
+          </div>
+          <div class="form-group">
+            <label>Month <span class="req">*</span></label>
+            <select id="ff-month">
+              <option value="">Select Month</option>
+              <option value="1">January</option><option value="2">February</option>
+              <option value="3">March</option><option value="4">April</option>
+              <option value="5">May</option><option value="6">June</option>
+              <option value="7">July</option><option value="8">August</option>
+              <option value="9">September</option><option value="10">October</option>
+              <option value="11">November</option><option value="12">December</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Year <span class="req">*</span></label>
+            <select id="ff-year"></select>
+          </div>
+          <div class="form-group">
+            <label>Paid Date <span class="req">*</span></label>
+            <input type="date" id="ff-paidDate">
+          </div>
+          <div class="form-group">
+            <label>Receipt Note</label>
+            <input type="text" id="ff-note" placeholder="Optional">
+          </div>
+        </div>
+        <input type="hidden" id="ff-editId">
+        <div class="form-actions">
+          <button class="btn-primary" onclick="saveFee()">💾 Save Fee</button>
+          <button class="btn-secondary" onclick="clearFeeForm()">✕ Clear</button>
+        </div>
+        <div class="form-msg" id="feeFormMsg"></div>
+      </div>
+
+      <!-- Fee History -->
+      <div class="dash-card full-width" style="margin-top:2rem">
+        <div class="dash-card-title-row">
+          <h3 class="dash-card-title">💳 All Fee Records</h3>
+          <div class="filter-row">
+            <select id="feeFilterMonth" onchange="renderFeeTable()">
+              <option value="">All Months</option>
+              <option value="1">January</option><option value="2">February</option>
+              <option value="3">March</option><option value="4">April</option>
+              <option value="5">May</option><option value="6">June</option>
+              <option value="7">July</option><option value="8">August</option>
+              <option value="9">September</option><option value="10">October</option>
+              <option value="11">November</option><option value="12">December</option>
+            </select>
+            <select id="feeFilterYear" onchange="renderFeeTable()"></select>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="feeTable">
+            <thead>
+              <tr>
+                <th>Seat</th><th>Name</th><th>Shift</th><th>Month</th><th>Year</th><th>Amount</th><th>Paid Date</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="feeBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- INCOME TAB -->
+    <div class="admin-tab" id="adminTab-income">
+      <div class="tab-header">
+        <h2>Income Report</h2>
+      </div>
+      <div class="income-filters">
+        <div class="form-group">
+          <label>Select Month</label>
+          <select id="inc-month">
+            <option value="">All Months</option>
+            <option value="1">January</option><option value="2">February</option>
+            <option value="3">March</option><option value="4">April</option>
+            <option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8">August</option>
+            <option value="9">September</option><option value="10">October</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Select Year</label>
+          <select id="inc-year"></select>
+        </div>
+        <button class="btn-primary" onclick="generateIncomeReport()">📊 Generate Report</button>
+      </div>
+      <div class="income-report-area" id="incomeReportArea"></div>
+    </div>
+
+    <!-- ADMIN SEAT GRID TAB -->
+    <div class="admin-tab" id="adminTab-seats">
+      <div class="tab-header">
+        <h2>Seat Management</h2>
+      </div>
+      <div class="month-year-filter">
+        <select id="admin-seatGridMonth" onchange="renderAdminSeatGrid()">
+          <option value="">Current Month</option>
+          <option value="1">January</option><option value="2">February</option>
+          <option value="3">March</option><option value="4">April</option>
+          <option value="5">May</option><option value="6">June</option>
+          <option value="7">July</option><option value="8">August</option>
+          <option value="9">September</option><option value="10">October</option>
+          <option value="11">November</option><option value="12">December</option>
+        </select>
+        <select id="admin-seatGridYear" onchange="renderAdminSeatGrid()"></select>
+      </div>
+      <div class="legend" style="margin-bottom:1.5rem">
+        <span class="legend-item"><span class="dot green"></span>Fee Paid</span>
+        <span class="legend-item"><span class="dot red"></span>Fee Pending</span>
+        <span class="legend-item"><span class="dot gray"></span>Empty</span>
+      </div>
+      <div class="seat-grid" id="adminSeatGrid"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- CONFIRM MODAL -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal-card confirm-card">
+    <div class="confirm-icon">⚠️</div>
+    <h3 id="confirmTitle">Confirm Delete</h3>
+    <p id="confirmMsg">Are you sure you want to delete this record?</p>
+    <div class="confirm-actions">
+      <button class="btn-danger" id="confirmYes">Yes, Delete</button>
+      <button class="btn-secondary" onclick="document.getElementById('confirmModal').classList.remove('active')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
