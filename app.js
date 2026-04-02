@@ -1,15 +1,21 @@
 /* ============================================================
-   LibraNova — Library Management System
-   app.js — Full Application Logic
+   Shiva Digital Library — app.js
    Admin: username="admin" password="lib@2025"
+
+   DATA STRUCTURE:
+   students[seat] = {
+     Morning:  { name, admDate, phone, notes } or null,
+     Evening:  { name, admDate, phone, notes } or null,
+     Night:    { name, admDate, phone, notes } or null
+   }
    ============================================================ */
 
 // ============================================================ DATA LAYER
 const DB = {
-  // Storage keys
-  STUDENTS_KEY: 'libranова_students',
-  FEES_KEY: 'libranова_fees',
-  ACTIVITY_KEY: 'libranова_activity',
+  STUDENTS_KEY: 'shiva_students',
+  FEES_KEY:     'shiva_fees',
+  ACTIVITY_KEY: 'shiva_activity',
+  ARCHIVE_KEY:  'shiva_archive',
 
   getStudents() {
     try { return JSON.parse(localStorage.getItem(this.STUDENTS_KEY)) || {}; } catch { return {}; }
@@ -31,37 +37,46 @@ const DB = {
     localStorage.setItem(this.ACTIVITY_KEY, JSON.stringify(acts));
   },
 
-  // Get all occupied seat numbers
-  getOccupiedSeats() { return Object.keys(this.getStudents()).map(Number); },
+  getArchive() {
+    try { return JSON.parse(localStorage.getItem(this.ARCHIVE_KEY)) || []; } catch { return []; }
+  },
+  setArchive(data) { localStorage.setItem(this.ARCHIVE_KEY, JSON.stringify(data)); },
 
-  // Get fees for a seat
-  getSeatsFeesForMonth(seat, month, year) {
-    return this.getFees().filter(f => +f.seat === +seat && +f.month === +month && +f.year === +year);
+  getFeesForMonth(seat, shift, month, year) {
+    return this.getFees().filter(f =>
+      +f.seat === +seat && f.shift === shift &&
+      +f.month === +month && +f.year === +year
+    );
   },
 
-  // Income for a month+year
   getIncome(month, year) {
-    const fees = this.getFees();
-    return fees
+    return this.getFees()
       .filter(f => (!month || +f.month === +month) && (!year || +f.year === +year))
       .reduce((sum, f) => sum + (+f.amount || 0), 0);
   },
 
-  // Generate unique fee ID
+  getOccupiedCount() {
+    const s = this.getStudents();
+    return Object.keys(s).filter(seat =>
+      SHIFTS.some(sh => s[seat] && s[seat][sh])
+    ).length;
+  },
+
   newFeeId() { return 'fee_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7); }
 };
 
 // ============================================================ CONSTANTS
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                'July', 'August', 'September', 'October', 'November', 'December'];
+  'July', 'August', 'September', 'October', 'November', 'December'];
+const SHIFTS = ['Morning', 'Evening', 'Night'];
+const SHIFT_ICON = { 'Morning': '🌅', 'Evening': '🌆', 'Night': '🌙', 'Double Shift': '☀️' };
 const SHIFT_FEES = { 'Morning': 500, 'Evening': 500, 'Double Shift': 800, 'Night': 500 };
 const ADMIN_USER = 'admin';
 const ADMIN_PASS = 'lib@2025';
 const TOTAL_SEATS = 42;
 const YEARS = (() => {
-  const base = 2023;
   const arr = [];
-  for (let y = base; y <= new Date().getFullYear() + 1; y++) arr.push(y);
+  for (let y = 2023; y <= new Date().getFullYear() + 1; y++) arr.push(y);
   return arr;
 })();
 
@@ -74,22 +89,22 @@ document.addEventListener('DOMContentLoaded', () => {
   renderSeatGrid();
   updateNavStats();
   setCurrentDate();
-  // Set today's date defaults
   const today = new Date().toISOString().split('T')[0];
-  if (document.getElementById('f-admDate')) document.getElementById('f-admDate').value = today;
-  if (document.getElementById('ff-paidDate')) document.getElementById('ff-paidDate').value = today;
+  const d1 = document.getElementById('f-admDate');
+  const d2 = document.getElementById('ff-paidDate');
+  if (d1) d1.value = today;
+  if (d2) d2.value = today;
 });
 
 function initYearDropdowns() {
   const ids = ['searchYear', 'ff-year', 'inc-year', 'feeFilterYear',
-                'seatGridYear', 'admin-seatGridYear', 'dash-chart-year'];
+    'seatGridYear', 'admin-seatGridYear', 'dash-chart-year'];
+  const curYear = new Date().getFullYear();
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     const hasAll = ['searchYear', 'feeFilterYear'].includes(id);
-    if (hasAll) el.innerHTML = '<option value="">All Years</option>';
-    else el.innerHTML = '';
-    const curYear = new Date().getFullYear();
+    el.innerHTML = hasAll ? '<option value="">All Years</option>' : '';
     YEARS.forEach(y => {
       const opt = document.createElement('option');
       opt.value = y; opt.textContent = y;
@@ -101,10 +116,11 @@ function initYearDropdowns() {
 
 function setCurrentDate() {
   const el = document.getElementById('currentDate');
-  if (el) el.textContent = new Date().toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  if (el) el.textContent = new Date().toLocaleDateString('en-IN',
+    { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-// ============================================================ THEME TOGGLE
+// ============================================================ THEME
 document.getElementById('themeToggle').addEventListener('click', () => {
   const html = document.documentElement;
   const isDark = html.getAttribute('data-theme') === 'dark';
@@ -116,23 +132,62 @@ document.getElementById('themeToggle').addEventListener('click', () => {
 function showToast(msg, type = 'success') {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.className = `toast ${type} show`;
+  t.className = 'toast ' + type + ' show';
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 
-// ============================================================ NAVBAR STATS
+// ============================================================ NAV STATS
 function updateNavStats() {
-  const occupied = Object.keys(DB.getStudents()).length;
-  const empty = TOTAL_SEATS - occupied;
+  const occupied = DB.getOccupiedCount();
   document.getElementById('nav-occupied').textContent = occupied;
-  document.getElementById('nav-empty').textContent = empty;
+  document.getElementById('nav-empty').textContent = TOTAL_SEATS - occupied;
   document.getElementById('nav-total').textContent = TOTAL_SEATS;
 }
 
-// ============================================================ SCROLL
 function scrollToSeats() {
   document.getElementById('seatsSection').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ============================================================ BUILD SEAT CARD HTML
+function buildSeatCard(seatNum, seatData, month, year) {
+  const hasAny = seatData && SHIFTS.some(sh => seatData[sh]);
+  if (!hasAny) {
+    return {
+      cls: 'empty',
+      html: '<span class="seat-num">' + String(seatNum).padStart(2,'0') + '</span>' +
+        '<div class="shift-rows">' +
+        '<div class="shift-row sr-empty"><span>🌅</span><span class="sr-name">empty</span></div>' +
+        '<div class="shift-row sr-empty"><span>🌆</span><span class="sr-name">empty</span></div>' +
+        '<div class="shift-row sr-empty"><span>🌙</span><span class="sr-name">empty</span></div>' +
+        '</div>'
+    };
+  }
+
+  let shiftHtml = '';
+  let anyPaid = false, anyPending = false;
+  SHIFTS.forEach(sh => {
+    const student = seatData[sh];
+    if (!student) {
+      shiftHtml += '<div class="shift-row sr-empty"><span>' + SHIFT_ICON[sh] + '</span><span class="sr-name">empty</span></div>';
+    } else {
+      const paid = DB.getFeesForMonth(seatNum, sh, month, year).length > 0;
+      if (paid) anyPaid = true; else anyPending = true;
+      const firstName = student.name.split(' ')[0];
+      shiftHtml += '<div class="shift-row ' + (paid ? 'sr-paid' : 'sr-pending') + '">' +
+        '<span>' + SHIFT_ICON[sh] + '</span>' +
+        '<span class="sr-name">' + firstName + '</span>' +
+        '<span class="sr-status">' + (paid ? '✓' : '!') + '</span>' +
+        '</div>';
+    }
+  });
+
+  const cls = (anyPaid && !anyPending) ? 'paid' : (!anyPaid && anyPending) ? 'pending' : 'mixed';
+  return {
+    cls,
+    html: '<span class="seat-num">' + String(seatNum).padStart(2,'0') + '</span>' +
+      '<div class="shift-rows">' + shiftHtml + '</div>'
+  };
 }
 
 // ============================================================ PUBLIC SEAT GRID
@@ -143,21 +198,12 @@ function renderSeatGrid() {
   const year  = +document.getElementById('seatGridYear').value  || new Date().getFullYear();
   const students = DB.getStudents();
   grid.innerHTML = '';
+
   for (let s = 1; s <= TOTAL_SEATS; s++) {
-    const student = students[s];
+    const card = buildSeatCard(s, students[s], month, year);
     const btn = document.createElement('button');
-    btn.className = 'seat-btn';
-    if (!student) {
-      btn.classList.add('empty');
-      btn.innerHTML = `<span class="seat-num">${String(s).padStart(2,'0')}</span><span class="seat-status">Empty</span>`;
-      btn.title = `Seat ${s} — Available`;
-    } else {
-      const feeRec = DB.getSeatsFeesForMonth(s, month, year);
-      const hasFee = feeRec.length > 0;
-      btn.classList.add(hasFee ? 'paid' : 'pending');
-      btn.innerHTML = `<span class="seat-num">${String(s).padStart(2,'0')}</span><span class="seat-status">${hasFee ? '✓ Paid' : '⚠ Due'}</span>`;
-      btn.title = `Seat ${s} — ${student.name}`;
-    }
+    btn.className = 'seat-btn seat-btn-new ' + card.cls;
+    btn.innerHTML = card.html;
     btn.addEventListener('click', () => openSeatModal(s, month, year));
     grid.appendChild(btn);
   }
@@ -166,23 +212,50 @@ function renderSeatGrid() {
 // ============================================================ SEAT MODAL (PUBLIC)
 function openSeatModal(seatNum, month, year) {
   const students = DB.getStudents();
-  const student = students[seatNum];
+  const seatData = students[seatNum];
   const modal = document.getElementById('seatModal');
-  document.getElementById('modalSeatNum').textContent = `S-${String(seatNum).padStart(2,'0')}`;
-  if (!student) {
-    document.getElementById('modalStudentName').textContent = 'Empty Seat';
-    document.getElementById('modalStudentShift').textContent = 'No student assigned';
-    document.getElementById('modalBody').innerHTML = `<div class="no-data">This seat is currently available.</div>`;
+  document.getElementById('modalSeatNum').textContent = 'S-' + String(seatNum).padStart(2,'0');
+
+  const hasAny = seatData && SHIFTS.some(sh => seatData[sh]);
+
+  if (!hasAny) {
+    document.getElementById('modalStudentName').textContent = 'empty Seat';
+    document.getElementById('modalStudentShift').textContent = 'Koi student nahi';
+    document.getElementById('modalBody').innerHTML = '<div class="no-data">Yeh seat abhi available hai.</div>';
   } else {
-    document.getElementById('modalStudentName').textContent = student.name;
-    document.getElementById('modalStudentShift').textContent = `${student.shift} • Since ${student.admDate}`;
-    const fees = DB.getFees().filter(f => +f.seat === +seatNum).sort((a,b)=> b.year-a.year || b.month-a.month);
-    let html = fees.length ? '' : '<div class="no-data">No fee records yet.</div>';
-    fees.forEach(f => {
-      html += `<div class="fee-row">
-        <div class="fee-row-left"><strong>${MONTHS[f.month]} ${f.year}</strong><br><small style="color:var(--text-muted)">${f.shift} — Paid: ${f.paidDate}</small></div>
-        <div class="fee-row-right">₹${f.amount}</div>
-      </div>`;
+    const firstShift = SHIFTS.find(sh => seatData[sh]);
+    document.getElementById('modalStudentName').textContent = seatData[firstShift].name;
+    document.getElementById('modalStudentShift').textContent = 'Seat ' + seatNum;
+
+    let html = '';
+    SHIFTS.forEach(sh => {
+      const student = seatData[sh];
+      html += '<div class="modal-shift-block">';
+      html += '<div class="modal-shift-header">';
+      html += '<span>' + SHIFT_ICON[sh] + ' ' + sh + '</span>';
+      if (student) {
+        html += '<span class="badge badge-' + sh.toLowerCase() + '">' + student.name + '</span>';
+      } else {
+        html += '<span style="color:var(--text-muted);font-size:.75rem">empty</span>';
+      }
+      html += '</div>';
+      if (student) {
+        const fees = DB.getFees()
+          .filter(f => +f.seat === +seatNum && f.shift === sh)
+          .sort((a, b) => b.year - a.year || b.month - a.month);
+        if (fees.length) {
+          fees.forEach(f => {
+            html += '<div class="fee-row">' +
+              '<div class="fee-row-left"><strong>' + MONTHS[f.month] + ' ' + f.year + '</strong><br>' +
+              '<small style="color:var(--text-muted)">Paid: ' + f.paidDate + '</small></div>' +
+              '<div class="fee-row-right">₹' + f.amount + '</div>' +
+              '</div>';
+          });
+        } else {
+          html += '<div class="no-data" style="padding:.5rem">Koi fee record nahi</div>';
+        }
+      }
+      html += '</div>';
     });
     document.getElementById('modalBody').innerHTML = html;
   }
@@ -190,27 +263,29 @@ function openSeatModal(seatNum, month, year) {
 }
 
 function closeSeatModal(e) {
-  if (e.target === document.getElementById('seatModal')) {
+  if (e.target === document.getElementById('seatModal'))
     document.getElementById('seatModal').classList.remove('active');
-  }
 }
 
 // ============================================================ PUBLIC SEARCH
 function searchStudent() {
   const seat = document.getElementById('searchSeat').value.trim();
   const year = document.getElementById('searchYear').value;
-  if (!seat && !year) { showToast('Please enter seat number or select year', 'error'); return; }
+  if (!seat && !year) { showToast('Seat number ya year select karo', 'error'); return; }
+
   const students = DB.getStudents();
   const fees = DB.getFees();
   let rows = [];
   fees.forEach(f => {
-    const s = students[f.seat];
-    if (!s) return;
+    const seatData = students[f.seat];
+    if (!seatData) return;
+    const student = seatData[f.shift];
+    if (!student) return;
     if (seat && +f.seat !== +seat) return;
     if (year && +f.year !== +year) return;
-    rows.push({ seat: f.seat, name: s.name, admDate: s.admDate, shift: f.shift, month: f.month, year: f.year, amount: f.amount, paidDate: f.paidDate });
+    rows.push({ seat: f.seat, name: student.name, admDate: student.admDate, shift: f.shift, month: f.month, year: f.year, amount: f.amount, paidDate: f.paidDate });
   });
-  rows.sort((a,b) => b.year-a.year || b.month-a.month || a.seat-b.seat);
+  rows.sort((a, b) => b.year - a.year || b.month - a.month || a.seat - b.seat);
   renderResultsTable(rows);
   document.getElementById('resultsSection').style.display = 'block';
   document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
@@ -219,12 +294,15 @@ function searchStudent() {
 function searchAll() {
   const students = DB.getStudents();
   const fees = DB.getFees();
-  const rows = fees.map(f => {
-    const s = students[f.seat];
-    if (!s) return null;
-    return { seat: f.seat, name: s.name, admDate: s.admDate, shift: f.shift, month: f.month, year: f.year, amount: f.amount, paidDate: f.paidDate };
-  }).filter(Boolean);
-  rows.sort((a,b) => b.year-a.year || b.month-a.month || a.seat-b.seat);
+  const rows = [];
+  fees.forEach(f => {
+    const seatData = students[f.seat];
+    if (!seatData) return;
+    const student = seatData[f.shift];
+    if (!student) return;
+    rows.push({ seat: f.seat, name: student.name, admDate: student.admDate, shift: f.shift, month: f.month, year: f.year, amount: f.amount, paidDate: f.paidDate });
+  });
+  rows.sort((a, b) => b.year - a.year || b.month - a.month || a.seat - b.seat);
   renderResultsTable(rows);
   document.getElementById('resultsSection').style.display = 'block';
   document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
@@ -233,20 +311,21 @@ function searchAll() {
 function renderResultsTable(rows) {
   const body = document.getElementById('resultsBody');
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="8" class="no-data">No records found.</td></tr>`;
+    body.innerHTML = '<tr><td colspan="8" class="no-data">Koi record nahi mila.</td></tr>';
     return;
   }
-  body.innerHTML = rows.map(r => `
-    <tr>
-      <td><span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent)">S-${String(r.seat).padStart(2,'0')}</span></td>
-      <td>${r.name}</td>
-      <td>${r.admDate || '—'}</td>
-      <td><span class="badge badge-${r.shift.toLowerCase().replace(' ','-')}">${r.shift}</span></td>
-      <td>${MONTHS[r.month]}</td>
-      <td>${r.year}</td>
-      <td style="font-family:'JetBrains Mono',monospace;color:var(--green)">₹${r.amount}</td>
-      <td>${r.paidDate || '—'}</td>
-    </tr>`).join('');
+  body.innerHTML = rows.map(r =>
+    '<tr>' +
+    '<td><span style="font-family:\'JetBrains Mono\',monospace;font-weight:700;color:var(--accent)">S-' + String(r.seat).padStart(2,'0') + '</span></td>' +
+    '<td>' + r.name + '</td>' +
+    '<td>' + (r.admDate || '—') + '</td>' +
+    '<td><span class="badge badge-' + r.shift.toLowerCase().replace(' ','-') + '">' + (SHIFT_ICON[r.shift]||'') + ' ' + r.shift + '</span></td>' +
+    '<td>' + MONTHS[r.month] + '</td>' +
+    '<td>' + r.year + '</td>' +
+    '<td style="font-family:\'JetBrains Mono\',monospace;color:var(--green)">₹' + r.amount + '</td>' +
+    '<td>' + (r.paidDate || '—') + '</td>' +
+    '</tr>'
+  ).join('');
 }
 
 function closeResults() {
@@ -269,7 +348,7 @@ function adminLogin() {
     showAdminPanel();
     showToast('Welcome back, Admin! 👋');
   } else {
-    document.getElementById('loginError').textContent = '⚠️ Invalid credentials. Try again.';
+    document.getElementById('loginError').textContent = '⚠️ Galat username ya password';
     document.getElementById('loginPass').value = '';
     setTimeout(() => document.getElementById('loginError').textContent = '', 3000);
   }
@@ -279,16 +358,15 @@ document.getElementById('loginPass').addEventListener('keydown', e => { if (e.ke
 document.getElementById('loginUser').addEventListener('keydown', e => { if (e.key === 'Enter') adminLogin(); });
 
 function closeLoginModal(e) {
-  if (e.target === document.getElementById('loginModal')) {
+  if (e.target === document.getElementById('loginModal'))
     document.getElementById('loginModal').classList.remove('active');
-  }
 }
 
 function adminLogout() {
   isAdminLoggedIn = false;
   document.getElementById('adminDashboard').style.display = 'none';
   document.body.style.overflow = '';
-  showToast('Logged out successfully.', 'info');
+  showToast('Logout ho gaye.', 'info');
 }
 
 function showAdminPanel() {
@@ -315,10 +393,9 @@ function toggleSidebar() {
 function showAdminTab(tabName) {
   document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById(`adminTab-${tabName}`).classList.add('active');
-  document.getElementById(`tab-${tabName}`).classList.add('active');
-  const titles = { dashboard:'Dashboard', students:'All Students', addStudent:'Add / Edit Student',
-                   fees:'Fee Management', income:'Income Report', seats:'Seat Grid' };
+  document.getElementById('adminTab-' + tabName).classList.add('active');
+  document.getElementById('tab-' + tabName).classList.add('active');
+  const titles = { dashboard:'Dashboard', students:'All Students', addStudent:'Add / Edit Student', fees:'Fee Management', income:'Income Report', seats:'Seat Grid' };
   document.getElementById('topbarTitle').textContent = titles[tabName] || tabName;
   if (tabName === 'dashboard') { refreshDashboard(); renderIncomeChart(); renderActivityList(); }
   if (tabName === 'students') renderStudentsTable();
@@ -327,28 +404,31 @@ function showAdminTab(tabName) {
   if (window.innerWidth <= 768) { document.getElementById('sidebar').classList.remove('open'); sidebarOpen = false; }
 }
 
-// ============================================================ DASHBOARD REFRESH
+// ============================================================ DASHBOARD
 function refreshDashboard() {
-  const students = DB.getStudents();
-  const occupied = Object.keys(students).length;
-  const empty = TOTAL_SEATS - occupied;
+  const occupied = DB.getOccupiedCount();
   const now = new Date();
   const curMonth = now.getMonth() + 1;
   const curYear = now.getFullYear();
   const monthlyInc = DB.getIncome(curMonth, curYear);
   const yearlyInc = DB.getIncome('', curYear);
-  const fees = DB.getFees();
-  // Pending: occupied seats without fee this month
+
+  const students = DB.getStudents();
   let pending = 0;
   Object.keys(students).forEach(seat => {
-    const hasFee = fees.some(f => +f.seat === +seat && +f.month === curMonth && +f.year === curYear);
-    if (!hasFee) pending++;
+    SHIFTS.forEach(sh => {
+      if (students[seat] && students[seat][sh]) {
+        const hasFee = DB.getFees().some(f => +f.seat === +seat && f.shift === sh && +f.month === curMonth && +f.year === curYear);
+        if (!hasFee) pending++;
+      }
+    });
   });
+
   document.getElementById('dash-total').textContent = TOTAL_SEATS;
   document.getElementById('dash-occupied').textContent = occupied;
-  document.getElementById('dash-empty').textContent = empty;
-  document.getElementById('dash-monthly').textContent = `₹${monthlyInc.toLocaleString()}`;
-  document.getElementById('dash-yearly').textContent = `₹${yearlyInc.toLocaleString()}`;
+  document.getElementById('dash-empty').textContent = TOTAL_SEATS - occupied;
+  document.getElementById('dash-monthly').textContent = '₹' + monthlyInc.toLocaleString();
+  document.getElementById('dash-yearly').textContent = '₹' + yearlyInc.toLocaleString();
   document.getElementById('dash-pending').textContent = pending;
   updateNavStats();
   renderMiniSeatGrid();
@@ -364,15 +444,20 @@ function renderMiniSeatGrid() {
   const students = DB.getStudents();
   grid.innerHTML = '';
   for (let s = 1; s <= TOTAL_SEATS; s++) {
-    const student = students[s];
+    const seatData = students[s];
     const div = document.createElement('div');
     div.className = 'mini-seat';
     div.textContent = s;
-    if (!student) { div.classList.add('empty'); div.title = `Seat ${s}: Empty`; }
-    else {
-      const paid = DB.getSeatsFeesForMonth(s, month, year).length > 0;
-      div.classList.add(paid ? 'paid' : 'pending');
-      div.title = `Seat ${s}: ${student.name} — ${paid ? 'Paid' : 'Pending'}`;
+    const hasAny = seatData && SHIFTS.some(sh => seatData[sh]);
+    if (!hasAny) {
+      div.classList.add('empty');
+      div.title = 'Seat ' + s + ': empty';
+    } else {
+      const allPaid = SHIFTS.every(sh => !seatData[sh] || DB.getFeesForMonth(s, sh, month, year).length > 0);
+      const anyPaid = SHIFTS.some(sh => seatData[sh] && DB.getFeesForMonth(s, sh, month, year).length > 0);
+      div.classList.add(allPaid ? 'paid' : anyPaid ? 'mixed' : 'pending');
+      const names = SHIFTS.filter(sh => seatData[sh]).map(sh => seatData[sh].name.split(' ')[0]).join(', ');
+      div.title = 'Seat ' + s + ': ' + names;
     }
     div.onclick = () => openAdminSeatClick(s);
     grid.appendChild(div);
@@ -380,13 +465,6 @@ function renderMiniSeatGrid() {
 }
 
 function openAdminSeatClick(seatNum) {
-  const students = DB.getStudents();
-  const student = students[seatNum];
-  if (!student) {
-    showAdminTab('addStudent');
-    document.getElementById('f-seat').value = seatNum;
-    return;
-  }
   showAdminTab('fees');
   document.getElementById('ff-seat').value = seatNum;
   autoFillFeeForm();
@@ -398,16 +476,14 @@ function renderIncomeChart() {
   if (!chart) return;
   const yearEl = document.getElementById('dash-chart-year');
   const year = yearEl ? +yearEl.value : new Date().getFullYear();
-  const maxInc = Math.max(...MONTHS.slice(1).map((_,i) => DB.getIncome(i+1, year)), 1);
+  const maxInc = Math.max.apply(null, MONTHS.slice(1).map(function(_, i) { return DB.getIncome(i + 1, year); }).concat([1]));
   chart.innerHTML = '';
   MONTHS.slice(1).forEach((m, i) => {
-    const inc = DB.getIncome(i+1, year);
+    const inc = DB.getIncome(i + 1, year);
     const pct = Math.max((inc / maxInc) * 100, 3);
     const wrap = document.createElement('div');
     wrap.className = 'chart-bar-wrap';
-    wrap.innerHTML = `
-      <div class="chart-bar" style="height:${pct}%" data-val="₹${inc.toLocaleString()}" title="${m}: ₹${inc.toLocaleString()}"></div>
-      <div class="chart-label">${m.slice(0,3)}</div>`;
+    wrap.innerHTML = '<div class="chart-bar" style="height:' + pct + '%" data-val="₹' + inc.toLocaleString() + '" title="' + m + ': ₹' + inc.toLocaleString() + '"></div><div class="chart-label">' + m.slice(0,3) + '</div>';
     chart.appendChild(wrap);
   });
 }
@@ -417,16 +493,14 @@ function renderActivityList() {
   const el = document.getElementById('activityList');
   if (!el) return;
   const acts = DB.getActivity();
-  if (!acts.length) {
-    el.innerHTML = '<div class="no-data">No activity yet.</div>';
-    return;
-  }
-  el.innerHTML = acts.slice(0, 10).map(a => `
-    <div class="activity-item">
-      <span class="activity-icon">${a.icon}</span>
-      <span class="activity-text">${a.text}</span>
-      <span class="activity-time">${a.time}</span>
-    </div>`).join('');
+  if (!acts.length) { el.innerHTML = '<div class="no-data">Koi activity nahi.</div>'; return; }
+  el.innerHTML = acts.slice(0, 10).map(a =>
+    '<div class="activity-item">' +
+    '<span class="activity-icon">' + a.icon + '</span>' +
+    '<span class="activity-text">' + a.text + '</span>' +
+    '<span class="activity-time">' + a.time + '</span>' +
+    '</div>'
+  ).join('');
 }
 
 // ============================================================ STUDENTS TABLE
@@ -435,131 +509,152 @@ function renderStudentsTable() {
   const search = (document.getElementById('studentSearch') || {}).value || '';
   const shiftFilter = (document.getElementById('filterShift') || {}).value || '';
   const students = DB.getStudents();
-  const rows = Object.entries(students)
-    .filter(([seat, s]) => {
-      const matchSearch = !search || s.name.toLowerCase().includes(search.toLowerCase()) || seat.includes(search);
-      const matchShift = !shiftFilter || s.shift === shiftFilter;
-      return matchSearch && matchShift;
-    })
-    .sort(([a],[b]) => a-b);
+
+  let rows = [];
+  Object.entries(students).forEach(([seat, seatData]) => {
+    SHIFTS.forEach(sh => {
+      const s = seatData && seatData[sh];
+      if (!s) return;
+      if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !seat.includes(search)) return;
+      if (shiftFilter && sh !== shiftFilter) return;
+      rows.push({ seat: +seat, shift: sh, name: s.name, admDate: s.admDate, phone: s.phone });
+    });
+  });
+  rows.sort((a, b) => a.seat - b.seat);
 
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">👥</div><p>No students found.</p></div></td></tr>`;
+    body.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">👥</div><p>Koi student nahi mila.</p></div></td></tr>';
     return;
   }
-  body.innerHTML = rows.map(([seat, s]) => `
-    <tr>
-      <td><span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent)">S-${String(seat).padStart(2,'0')}</span></td>
-      <td>${s.name}${s.phone ? `<br><small style="color:var(--text-muted)">${s.phone}</small>` : ''}</td>
-      <td>${s.admDate || '—'}</td>
-      <td><span class="badge badge-${s.shift.toLowerCase().replace(' ','-')}">${s.shift}</span></td>
-      <td>
-        <button class="btn-icon btn-edit" onclick="editStudent(${seat})" title="Edit">✏️</button>
-        <button class="btn-icon btn-del" onclick="confirmDeleteStudent(${seat})" title="Delete">🗑️</button>
-      </td>
-    </tr>`).join('');
+  body.innerHTML = rows.map(r =>
+    '<tr>' +
+    '<td><span style="font-family:\'JetBrains Mono\',monospace;font-weight:700;color:var(--accent)">S-' + String(r.seat).padStart(2,'0') + '</span></td>' +
+    '<td>' + r.name + (r.phone ? '<br><small style="color:var(--text-muted)">' + r.phone + '</small>' : '') + '</td>' +
+    '<td>' + (r.admDate || '—') + '</td>' +
+    '<td><span class="badge badge-' + r.shift.toLowerCase().replace(' ','-') + '">' + (SHIFT_ICON[r.shift]||'') + ' ' + r.shift + '</span></td>' +
+    '<td>' +
+    '<button class="btn-icon btn-edit" onclick="editStudent(' + r.seat + ',\'' + r.shift + '\')" title="Edit">✏️</button> ' +
+    '<button class="btn-icon btn-del" onclick="confirmDeleteStudent(' + r.seat + ',\'' + r.shift + '\')" title="Delete">🗑️</button>' +
+    '</td>' +
+    '</tr>'
+  ).join('');
 }
 
 function filterStudents() { renderStudentsTable(); }
 
 // ============================================================ ADD/EDIT STUDENT
 function saveStudent() {
-  const seat    = +document.getElementById('f-seat').value;
-  const name    = document.getElementById('f-name').value.trim();
-  const admDate = document.getElementById('f-admDate').value;
-  const shift   = document.getElementById('f-shift').value;
-  const phone   = document.getElementById('f-phone').value.trim();
-  const notes   = document.getElementById('f-notes').value.trim();
-  const editSeat= document.getElementById('f-editSeat').value;
-  const msgEl   = document.getElementById('studentFormMsg');
+  const seat     = +document.getElementById('f-seat').value;
+  const name     = document.getElementById('f-name').value.trim();
+  const admDate  = document.getElementById('f-admDate').value;
+  const shift    = document.getElementById('f-shift').value;
+  const phone    = document.getElementById('f-phone').value.trim();
+  const notes    = document.getElementById('f-notes').value.trim();
+  const editSeat  = document.getElementById('f-editSeat').value;
+  const editShift = document.getElementById('f-editShift').value;
+  const msgEl    = document.getElementById('studentFormMsg');
 
-  if (!seat || seat < 1 || seat > 42) { showFormMsg(msgEl, '⚠️ Seat number must be 1–42', 'error'); return; }
-  if (!name) { showFormMsg(msgEl, '⚠️ Full name is required', 'error'); return; }
-  if (!admDate) { showFormMsg(msgEl, '⚠️ Admission date is required', 'error'); return; }
-  if (!shift) { showFormMsg(msgEl, '⚠️ Please select a shift', 'error'); return; }
+  if (!seat || seat < 1 || seat > 42) { showFormMsg(msgEl, '⚠️ Seat number 1–42 hona chahiye', 'error'); return; }
+  if (!name) { showFormMsg(msgEl, '⚠️ Naam zaruri hai', 'error'); return; }
+  if (!admDate) { showFormMsg(msgEl, '⚠️ Admission date zaruri hai', 'error'); return; }
+  if (!shift) { showFormMsg(msgEl, '⚠️ Shift select karo', 'error'); return; }
 
   const students = DB.getStudents();
-  const isEdit = !!editSeat;
-  const conflictSeat = students[seat];
+  const isEdit = !!(editSeat && editShift);
 
-  if (!isEdit && conflictSeat) { showFormMsg(msgEl, `⚠️ Seat ${seat} is already occupied by ${conflictSeat.name}`, 'error'); return; }
-  if (isEdit && +editSeat !== seat && conflictSeat) { showFormMsg(msgEl, `⚠️ Seat ${seat} is already occupied by ${conflictSeat.name}`, 'error'); return; }
+  // Conflict check: kya same seat+shift pe already koi hai
+  const existingInSlot = students[seat] && students[seat][shift];
+  const editingSameSlot = isEdit && +editSeat === seat && editShift === shift;
 
-  // If editing and seat changed, remove old
-  if (isEdit && +editSeat !== seat) {
-    delete students[+editSeat];
-    // Update fee records' seat number
-    const fees = DB.getFees();
-    fees.forEach(f => { if (+f.seat === +editSeat) { f.seat = seat; f.seatLabel = `S-${String(seat).padStart(2,'0')}`; } });
-    DB.setFees(fees);
+  if (existingInSlot && !editingSameSlot) {
+    showFormMsg(msgEl, '⚠️ Seat ' + seat + ' ki ' + shift + ' shift mein pehle se ' + existingInSlot.name + ' hain!', 'error');
+    return;
   }
 
-  students[seat] = { name, admDate, shift, phone, notes, createdAt: students[seat]?.createdAt || new Date().toISOString() };
-  DB.setStudents(students);
-  DB.addActivity('👤', `${isEdit ? 'Updated' : 'Added'} student: ${name} (Seat ${seat})`);
+  // Remove old slot if editing and slot changed
+  if (isEdit && (+editSeat !== seat || editShift !== shift)) {
+    if (students[editSeat]) {
+      delete students[editSeat][editShift];
+      if (Object.keys(students[editSeat]).length === 0) delete students[editSeat];
+    }
+  }
 
-  showFormMsg(msgEl, `✅ Student ${isEdit ? 'updated' : 'added'} successfully!`, 'success');
-  showToast(`Student ${isEdit ? 'updated' : 'added'} — ${name}`);
+  if (!students[seat]) students[seat] = {};
+  students[seat][shift] = { name, admDate, phone, notes, createdAt: new Date().toISOString() };
+  DB.setStudents(students);
+  DB.addActivity('👤', (isEdit ? 'Update' : 'Add') + ': ' + name + ' — Seat ' + seat + ' ' + shift);
+
+  showFormMsg(msgEl, '✅ ' + name + ' — Seat ' + seat + ' (' + shift + ') mein ' + (isEdit ? 'update' : 'add') + ' ho gaye!', 'success');
+  showToast(name + ' — Seat ' + seat + ' (' + shift + ')');
   clearStudentForm();
   renderStudentsTable();
   populateFeeSeats();
   refreshDashboard();
   renderAdminSeatGrid();
+  renderSeatGrid();
 }
 
-function editStudent(seat) {
+function editStudent(seat, shift) {
   const students = DB.getStudents();
-  const s = students[seat];
+  const s = students[seat] && students[seat][shift];
   if (!s) return;
   document.getElementById('f-seat').value = seat;
   document.getElementById('f-name').value = s.name;
   document.getElementById('f-admDate').value = s.admDate || '';
-  document.getElementById('f-shift').value = s.shift;
+  document.getElementById('f-shift').value = shift;
   document.getElementById('f-phone').value = s.phone || '';
   document.getElementById('f-notes').value = s.notes || '';
   document.getElementById('f-editSeat').value = seat;
-  document.getElementById('addStudentTitle').textContent = `Edit Student — Seat ${seat}`;
+  document.getElementById('f-editShift').value = shift;
+  document.getElementById('addStudentTitle').textContent = 'Edit — Seat ' + seat + ' (' + shift + ')';
   showAdminTab('addStudent');
-  window.scrollTo(0,0);
 }
 
 function clearStudentForm() {
-  ['f-seat','f-name','f-admDate','f-shift','f-phone','f-notes'].forEach(id => {
+  ['f-seat','f-name','f-shift','f-phone','f-notes'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.value = id === 'f-admDate' ? new Date().toISOString().split('T')[0] : '';
+    if (el) el.value = '';
   });
+  const d = document.getElementById('f-admDate');
+  if (d) d.value = new Date().toISOString().split('T')[0];
   document.getElementById('f-editSeat').value = '';
+  document.getElementById('f-editShift').value = '';
   document.getElementById('addStudentTitle').textContent = 'Add New Student';
   document.getElementById('studentFormMsg').textContent = '';
 }
 
-function confirmDeleteStudent(seat) {
+function confirmDeleteStudent(seat, shift) {
   const students = DB.getStudents();
-  const s = students[seat];
+  const s = students[seat] && students[seat][shift];
   if (!s) return;
   showConfirm(
-    `Delete Student`,
-    `Delete ${s.name} from Seat ${seat}? All fee records will also be deleted and income will be updated.`,
-    () => deleteStudent(seat)
+    'Student Hatao — Seat ' + seat + ' (' + shift + ')',
+    s.name + ' ko Seat ' + seat + ' ke ' + shift + ' shift se hatana chahte ho? Seat khali ho jayegi lekin fee history SAFE rahegi.',
+    () => deleteStudent(seat, shift)
   );
 }
 
-function deleteStudent(seat) {
+function deleteStudent(seat, shift) {
   const students = DB.getStudents();
-  const s = students[seat];
+  const s = students[seat] && students[seat][shift];
   if (!s) return;
   const name = s.name;
-  delete students[seat];
+
+  const archive = DB.getArchive();
+  archive.push(Object.assign({}, s, { seat, shift, archivedAt: new Date().toISOString() }));
+  DB.setArchive(archive);
+
+  delete students[seat][shift];
+  if (Object.keys(students[seat]).length === 0) delete students[seat];
   DB.setStudents(students);
-  // Remove all fees for this seat (income auto-decreases)
-  const fees = DB.getFees().filter(f => +f.seat !== +seat);
-  DB.setFees(fees);
-  DB.addActivity('🗑️', `Deleted student: ${name} (Seat ${seat}) — fees removed`);
-  showToast(`Deleted: ${name} (Seat ${seat})`, 'error');
+
+  DB.addActivity('📦', name + ' — Seat ' + seat + ' (' + shift + ') archived, fees safe hain');
+  showToast(name + ' archive ho gaye — fee history safe hai', 'info');
   renderStudentsTable();
   populateFeeSeats();
   refreshDashboard();
   renderAdminSeatGrid();
+  renderSeatGrid();
   renderFeeTable();
 }
 
@@ -569,66 +664,82 @@ function populateFeeSeats() {
   if (!sel) return;
   const cur = sel.value;
   const students = DB.getStudents();
-  sel.innerHTML = '<option value="">Select Seat</option>';
-  Object.entries(students).sort(([a],[b])=>a-b).forEach(([seat, s]) => {
-    const opt = document.createElement('option');
-    opt.value = seat;
-    opt.textContent = `Seat ${seat} — ${s.name}`;
-    sel.appendChild(opt);
+  sel.innerHTML = '<option value="">Seat aur Shift Select Karo</option>';
+  Object.entries(students).sort(([a],[b]) => a-b).forEach(([seat, seatData]) => {
+    SHIFTS.forEach(sh => {
+      if (seatData && seatData[sh]) {
+        const opt = document.createElement('option');
+        opt.value = seat + '__' + sh;
+        opt.textContent = 'Seat ' + seat + ' — ' + seatData[sh].name + ' (' + sh + ')';
+        sel.appendChild(opt);
+      }
+    });
   });
   if (cur) sel.value = cur;
 }
 
 function autoFillFeeForm() {
-  const seat = document.getElementById('ff-seat').value;
-  if (!seat) { document.getElementById('ff-name').value = ''; document.getElementById('ff-shift').value = ''; return; }
+  const val = document.getElementById('ff-seat').value;
+  if (!val) {
+    document.getElementById('ff-name').value = '';
+    document.getElementById('ff-shift').value = '';
+    document.getElementById('ff-amount').value = '';
+    return;
+  }
+  const parts = val.split('__');
+  const seat = parts[0]; const shift = parts[1];
   const students = DB.getStudents();
-  const s = students[seat];
+  const s = students[seat] && students[seat][shift];
   if (s) {
     document.getElementById('ff-name').value = s.name;
-    document.getElementById('ff-shift').value = s.shift;
-    document.getElementById('ff-amount').value = document.getElementById('ff-amount').value || SHIFT_FEES[s.shift] || 500;
+    document.getElementById('ff-shift').value = shift;
+    if (!document.getElementById('ff-amount').value)
+      document.getElementById('ff-amount').value = SHIFT_FEES[shift] || 500;
   }
 }
 
 function saveFee() {
-  const seat     = +document.getElementById('ff-seat').value;
-  const amount   = +document.getElementById('ff-amount').value;
-  const month    = +document.getElementById('ff-month').value;
-  const year     = +document.getElementById('ff-year').value;
-  const paidDate = document.getElementById('ff-paidDate').value;
-  const note     = document.getElementById('ff-note').value.trim();
-  const editId   = document.getElementById('ff-editId').value;
-  const msgEl    = document.getElementById('feeFormMsg');
+  const seatShift = document.getElementById('ff-seat').value;
+  const amount    = +document.getElementById('ff-amount').value;
+  const month     = +document.getElementById('ff-month').value;
+  const year      = +document.getElementById('ff-year').value;
+  const paidDate  = document.getElementById('ff-paidDate').value;
+  const note      = document.getElementById('ff-note').value.trim();
+  const editId    = document.getElementById('ff-editId').value;
+  const msgEl     = document.getElementById('feeFormMsg');
 
-  if (!seat) { showFormMsg(msgEl, '⚠️ Please select a seat', 'error'); return; }
-  if (!amount || amount <= 0) { showFormMsg(msgEl, '⚠️ Enter a valid amount', 'error'); return; }
-  if (!month) { showFormMsg(msgEl, '⚠️ Select month', 'error'); return; }
-  if (!year) { showFormMsg(msgEl, '⚠️ Select year', 'error'); return; }
-  if (!paidDate) { showFormMsg(msgEl, '⚠️ Enter paid date', 'error'); return; }
+  if (!seatShift) { showFormMsg(msgEl, '⚠️ Seat aur shift select karo', 'error'); return; }
+  if (!amount || amount <= 0) { showFormMsg(msgEl, '⚠️ Sahi amount daalo', 'error'); return; }
+  if (!month) { showFormMsg(msgEl, '⚠️ Month select karo', 'error'); return; }
+  if (!year) { showFormMsg(msgEl, '⚠️ Year select karo', 'error'); return; }
+  if (!paidDate) { showFormMsg(msgEl, '⚠️ Paid date daalo', 'error'); return; }
 
+  const parts = seatShift.split('__');
+  const seat = +parts[0]; const shift = parts[1];
   const students = DB.getStudents();
-  const s = students[seat];
-  if (!s) { showFormMsg(msgEl, '⚠️ No student at this seat', 'error'); return; }
+  const s = students[seat] && students[seat][shift];
+  if (!s) { showFormMsg(msgEl, '⚠️ Is seat/shift mein koi student nahi', 'error'); return; }
 
   let fees = DB.getFees();
-  // Duplicate check (same seat, month, year) — skip if editing same record
-  const dup = fees.find(f => +f.seat === +seat && +f.month === +month && +f.year === +year && f.id !== editId);
-  if (dup) { showFormMsg(msgEl, `⚠️ Fee for ${MONTHS[month]} ${year} already exists for this seat`, 'error'); return; }
+  const dup = fees.find(f => +f.seat === seat && f.shift === shift && +f.month === month && +f.year === year && f.id !== editId);
+  if (dup) {
+    showFormMsg(msgEl, '⚠️ ' + MONTHS[month] + ' ' + year + ' ka fee already add hai — ' + shift + ' shift', 'error');
+    return;
+  }
 
   if (editId) {
     const idx = fees.findIndex(f => f.id === editId);
     if (idx !== -1) {
-      fees[idx] = { ...fees[idx], seat, amount, month, year, paidDate, shift: s.shift, note, studentName: s.name };
-      DB.addActivity('✏️', `Updated fee: ${s.name} — ${MONTHS[month]} ${year} — ₹${amount}`);
+      fees[idx] = Object.assign({}, fees[idx], { seat, shift, amount, month, year, paidDate, note, studentName: s.name });
+      DB.addActivity('✏️', 'Fee update: ' + s.name + ' — ' + MONTHS[month] + ' ' + year + ' — ₹' + amount);
     }
   } else {
-    fees.push({ id: DB.newFeeId(), seat, amount, month, year, paidDate, shift: s.shift, note, studentName: s.name, createdAt: new Date().toISOString() });
-    DB.addActivity('💰', `Fee added: ${s.name} (Seat ${seat}) — ${MONTHS[month]} ${year} — ₹${amount}`);
+    fees.push({ id: DB.newFeeId(), seat, shift, amount, month, year, paidDate, note, studentName: s.name, createdAt: new Date().toISOString() });
+    DB.addActivity('💰', 'Fee add: ' + s.name + ' (Seat ' + seat + ' ' + shift + ') — ' + MONTHS[month] + ' ' + year + ' — ₹' + amount);
   }
   DB.setFees(fees);
-  showFormMsg(msgEl, `✅ Fee ${editId ? 'updated' : 'saved'} — ₹${amount} for ${MONTHS[month]} ${year}`, 'success');
-  showToast(`Fee saved — ₹${amount} for ${s.name}`);
+  showFormMsg(msgEl, '✅ ₹' + amount + ' — ' + s.name + ' (' + MONTHS[month] + ' ' + year + ') save ho gaya!', 'success');
+  showToast('Fee saved — ₹' + amount + ' for ' + s.name);
   clearFeeForm();
   renderFeeTable();
   refreshDashboard();
@@ -660,24 +771,25 @@ function renderFeeTable() {
     .sort((a,b) => b.year-a.year || b.month-a.month || a.seat-b.seat);
 
   if (!fees.length) {
-    body.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">💳</div><p>No fee records for this filter.</p></div></td></tr>`;
+    body.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">💳</div><p>Koi fee record nahi.</p></div></td></tr>';
     return;
   }
   body.innerHTML = fees.map(f => {
-    const s = students[f.seat];
-    return `<tr>
-      <td><span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent)">S-${String(f.seat).padStart(2,'0')}</span></td>
-      <td>${s ? s.name : f.studentName || '—'}</td>
-      <td><span class="badge badge-${(f.shift||'').toLowerCase().replace(' ','-')}">${f.shift || '—'}</span></td>
-      <td>${MONTHS[f.month]}</td>
-      <td>${f.year}</td>
-      <td style="font-family:'JetBrains Mono',monospace;color:var(--green);font-weight:700">₹${f.amount}</td>
-      <td>${f.paidDate || '—'}</td>
-      <td>
-        <button class="btn-icon btn-edit" onclick="editFee('${f.id}')" title="Edit">✏️</button>
-        <button class="btn-icon btn-del" onclick="confirmDeleteFee('${f.id}')" title="Delete">🗑️</button>
-      </td>
-    </tr>`;
+    const seatData = students[f.seat];
+    const student = seatData && seatData[f.shift];
+    const name = student ? student.name : (f.studentName || '—');
+    return '<tr>' +
+      '<td><span style="font-family:\'JetBrains Mono\',monospace;font-weight:700;color:var(--accent)">S-' + String(f.seat).padStart(2,'0') + '</span></td>' +
+      '<td>' + name + '</td>' +
+      '<td><span class="badge badge-' + (f.shift||'').toLowerCase().replace(' ','-') + '">' + (SHIFT_ICON[f.shift]||'') + ' ' + (f.shift||'—') + '</span></td>' +
+      '<td>' + MONTHS[f.month] + '</td>' +
+      '<td>' + f.year + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\',monospace;color:var(--green);font-weight:700">₹' + f.amount + '</td>' +
+      '<td>' + (f.paidDate||'—') + '</td>' +
+      '<td>' +
+      '<button class="btn-icon btn-edit" onclick="editFee(\'' + f.id + '\')" title="Edit">✏️</button> ' +
+      '<button class="btn-icon btn-del" onclick="confirmDeleteFee(\'' + f.id + '\')" title="Delete">🗑️</button>' +
+      '</td></tr>';
   }).join('');
 }
 
@@ -686,7 +798,7 @@ function editFee(id) {
   const f = fees.find(x => x.id === id);
   if (!f) return;
   populateFeeSeats();
-  document.getElementById('ff-seat').value = f.seat;
+  document.getElementById('ff-seat').value = f.seat + '__' + f.shift;
   autoFillFeeForm();
   document.getElementById('ff-amount').value = f.amount;
   document.getElementById('ff-month').value = f.month;
@@ -696,32 +808,23 @@ function editFee(id) {
   document.getElementById('ff-editId').value = id;
   showAdminTab('fees');
   document.querySelector('.admin-main').scrollTo(0, 0);
-  showToast('Edit mode — update fee and save', 'info');
+  showToast('Edit mode — update kar ke save karo', 'info');
 }
 
 function confirmDeleteFee(id) {
   const fees = DB.getFees();
   const f = fees.find(x => x.id === id);
   if (!f) return;
-  const students = DB.getStudents();
-  const name = (students[f.seat] || {}).name || f.studentName || 'Unknown';
-  showConfirm(
-    'Delete Fee Record',
-    `Delete ₹${f.amount} fee for ${name} — ${MONTHS[f.month]} ${f.year}? Income will be reduced automatically.`,
-    () => deleteFee(id)
-  );
+  showConfirm('Fee Delete Karo', '₹' + f.amount + ' ka fee — ' + (f.studentName||'') + ' (' + MONTHS[f.month] + ' ' + f.year + ') delete karna chahte ho?', () => deleteFee(id));
 }
 
 function deleteFee(id) {
   const fees = DB.getFees();
   const f = fees.find(x => x.id === id);
   if (!f) return;
-  const students = DB.getStudents();
-  const name = (students[f.seat] || {}).name || f.studentName || 'Unknown';
-  const newFees = fees.filter(x => x.id !== id);
-  DB.setFees(newFees);
-  DB.addActivity('🗑️', `Deleted fee: ${name} (Seat ${f.seat}) — ${MONTHS[f.month]} ${f.year} — ₹${f.amount}`);
-  showToast(`Fee deleted — ₹${f.amount} removed from income`, 'error');
+  DB.setFees(fees.filter(x => x.id !== id));
+  DB.addActivity('🗑️', 'Fee delete: ' + (f.studentName||'') + ' Seat ' + f.seat + ' ' + f.shift + ' — ' + MONTHS[f.month] + ' ' + f.year + ' — ₹' + f.amount);
+  showToast('Fee delete ho gayi — ₹' + f.amount, 'error');
   renderFeeTable();
   refreshDashboard();
   renderAdminSeatGrid();
@@ -736,29 +839,13 @@ function renderAdminSeatGrid() {
   const year  = +document.getElementById('admin-seatGridYear').value  || new Date().getFullYear();
   const students = DB.getStudents();
   grid.innerHTML = '';
+
   for (let s = 1; s <= TOTAL_SEATS; s++) {
-    const student = students[s];
+    const card = buildSeatCard(s, students[s], month, year);
     const btn = document.createElement('button');
-    btn.className = 'seat-btn';
-    if (!student) {
-      btn.classList.add('empty');
-      btn.innerHTML = `<span class="seat-num">${String(s).padStart(2,'0')}</span><span class="seat-status">Empty</span>`;
-    } else {
-      const hasFee = DB.getSeatsFeesForMonth(s, month, year).length > 0;
-      btn.classList.add(hasFee ? 'paid' : 'pending');
-      btn.innerHTML = `<span class="seat-num">${String(s).padStart(2,'0')}</span><span class="seat-status">${hasFee ? '✓ Paid' : '⚠ Due'}</span>`;
-    }
-    btn.title = student ? `Seat ${s} — ${student.name}` : `Seat ${s} — Available`;
-    btn.addEventListener('click', () => {
-      if (!student) {
-        showAdminTab('addStudent');
-        document.getElementById('f-seat').value = s;
-      } else {
-        showAdminTab('fees');
-        document.getElementById('ff-seat').value = s;
-        autoFillFeeForm();
-      }
-    });
+    btn.className = 'seat-btn seat-btn-new ' + card.cls;
+    btn.innerHTML = card.html;
+    btn.addEventListener('click', () => openAdminSeatClick(s));
     grid.appendChild(btn);
   }
 }
@@ -768,67 +855,40 @@ function generateIncomeReport() {
   const month = +document.getElementById('inc-month').value;
   const year  = +document.getElementById('inc-year').value;
   const area  = document.getElementById('incomeReportArea');
-  const fees  = DB.getFees();
   const students = DB.getStudents();
 
-  let filtered = fees.filter(f => (!month || +f.month === month) && (!year || +f.year === year));
+  let filtered = DB.getFees().filter(f => (!month || +f.month === month) && (!year || +f.year === year));
   filtered.sort((a,b) => b.year-a.year || b.month-a.month || a.seat-b.seat);
+  const totalIncome = filtered.reduce((sum,f) => sum + (+f.amount||0), 0);
 
-  const totalIncome = filtered.reduce((sum, f) => sum + (+f.amount||0), 0);
-
-  // Group by month
   const grouped = {};
   filtered.forEach(f => {
-    const key = `${f.year}-${String(f.month).padStart(2,'0')}`;
+    const key = f.year + '-' + String(f.month).padStart(2,'0');
     if (!grouped[key]) grouped[key] = { month: f.month, year: f.year, total: 0, records: [] };
     grouped[key].total += +f.amount || 0;
     grouped[key].records.push(f);
   });
 
   if (!filtered.length) {
-    area.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><p>No income records for this period.</p></div>`;
+    area.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><p>Is period mein koi income nahi.</p></div>';
     return;
   }
 
-  let html = `<div class="income-summary-cards">
-    <div class="income-summary-card">
-      <div class="inc-amount">₹${totalIncome.toLocaleString()}</div>
-      <div class="inc-label">${month ? MONTHS[month] : 'All Months'} ${year} Total Income</div>
-    </div>
-    <div class="income-summary-card">
-      <div class="inc-amount" style="color:var(--accent)">${filtered.length}</div>
-      <div class="inc-label">Total Transactions</div>
-    </div>
-    <div class="income-summary-card">
-      <div class="inc-amount" style="color:var(--orange)">${Object.keys(grouped).length}</div>
-      <div class="inc-label">Months with Income</div>
-    </div>
-  </div>`;
+  let html = '<div class="income-summary-cards">' +
+    '<div class="income-summary-card"><div class="inc-amount">₹' + totalIncome.toLocaleString() + '</div><div class="inc-label">' + (month ? MONTHS[month] : 'Sabhi Mahine') + ' ' + year + ' Total</div></div>' +
+    '<div class="income-summary-card"><div class="inc-amount" style="color:var(--accent)">' + filtered.length + '</div><div class="inc-label">Total Transactions</div></div>' +
+    '<div class="income-summary-card"><div class="inc-amount" style="color:var(--orange)">' + Object.keys(grouped).length + '</div><div class="inc-label">Months</div></div>' +
+    '</div>';
 
   Object.values(grouped).sort((a,b) => b.year-a.year || b.month-a.month).forEach(g => {
-    html += `<div class="dash-card" style="margin-bottom:1.5rem">
-      <div class="dash-card-title-row">
-        <h3 class="dash-card-title">📅 ${MONTHS[g.month]} ${g.year}</h3>
-        <span style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:700;color:var(--green)">₹${g.total.toLocaleString()}</span>
-      </div>
-      <div class="table-wrapper">
-        <table class="data-table">
-          <thead><tr><th>Seat</th><th>Name</th><th>Shift</th><th>Amount</th><th>Paid Date</th></tr></thead>
-          <tbody>
-            ${g.records.map(f => {
-              const s = students[f.seat];
-              return `<tr>
-                <td style="font-family:'JetBrains Mono',monospace;color:var(--accent);font-weight:700">S-${String(f.seat).padStart(2,'0')}</td>
-                <td>${s ? s.name : f.studentName || '—'}</td>
-                <td><span class="badge badge-${(f.shift||'').toLowerCase().replace(' ','-')}">${f.shift||'—'}</span></td>
-                <td style="font-family:'JetBrains Mono',monospace;color:var(--green);font-weight:700">₹${f.amount}</td>
-                <td>${f.paidDate||'—'}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
+    html += '<div class="dash-card" style="margin-bottom:1.5rem"><div class="dash-card-title-row"><h3 class="dash-card-title">📅 ' + MONTHS[g.month] + ' ' + g.year + '</h3><span style="font-family:\'JetBrains Mono\',monospace;font-size:1.1rem;font-weight:700;color:var(--green)">₹' + g.total.toLocaleString() + '</span></div><div class="table-wrapper"><table class="data-table"><thead><tr><th>Seat</th><th>Name</th><th>Shift</th><th>Amount</th><th>Paid Date</th></tr></thead><tbody>';
+    g.records.forEach(f => {
+      const seatData = students[f.seat];
+      const st = seatData && seatData[f.shift];
+      const nm = st ? st.name : (f.studentName || '—');
+      html += '<tr><td style="font-family:\'JetBrains Mono\',monospace;color:var(--accent);font-weight:700">S-' + String(f.seat).padStart(2,'0') + '</td><td>' + nm + '</td><td><span class="badge badge-' + (f.shift||'').toLowerCase().replace(' ','-') + '">' + (SHIFT_ICON[f.shift]||'') + ' ' + (f.shift||'—') + '</span></td><td style="font-family:\'JetBrains Mono\',monospace;color:var(--green);font-weight:700">₹' + f.amount + '</td><td>' + (f.paidDate||'—') + '</td></tr>';
+    });
+    html += '</tbody></table></div></div>';
   });
   area.innerHTML = html;
 }
@@ -847,15 +907,14 @@ function showConfirm(title, msg, onYes) {
   document.getElementById('confirmModal').classList.add('active');
 }
 
-// ============================================================ FORM MESSAGE
 function showFormMsg(el, msg, type) {
   if (!el) return;
   el.textContent = msg;
-  el.className = `form-msg ${type}`;
+  el.className = 'form-msg ' + type;
   setTimeout(() => { if (el) el.textContent = ''; }, 4000);
 }
 
-// ============================================================ KEYBOARD SHORTCUTS
+// ============================================================ KEYBOARD
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
@@ -866,45 +925,52 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// ============================================================ SAMPLE DATA (first run)
+// ============================================================ SAMPLE DATA
 (function seedSampleData() {
   const students = DB.getStudents();
-  if (Object.keys(students).length > 0) return; // Already has data
+  if (Object.keys(students).length > 0) return;
 
-  const sampleStudents = {
-    1: { name: 'Arjun Sharma', admDate: '2025-01-10', shift: 'Morning', phone: '9876543210', notes: '' },
-    2: { name: 'Priya Verma', admDate: '2025-02-15', shift: 'Evening', phone: '9988776655', notes: '' },
-    3: { name: 'Rahul Singh', admDate: '2025-01-20', shift: 'Double Shift', phone: '9123456789', notes: '' },
-    5: { name: 'Ananya Gupta', admDate: '2025-03-05', shift: 'Night', phone: '9011223344', notes: '' },
-    7: { name: 'Vikram Patel', admDate: '2025-02-28', shift: 'Morning', phone: '9876512345', notes: '' },
-    10: { name: 'Sneha Yadav', admDate: '2025-04-01', shift: 'Evening', phone: '9871234560', notes: '' },
-    12: { name: 'Rohan Tiwari', admDate: '2025-01-15', shift: 'Morning', phone: '9887766554', notes: '' },
-    15: { name: 'Kavita Joshi', admDate: '2025-03-20', shift: 'Double Shift', phone: '9012345678', notes: '' },
-    18: { name: 'Amit Kumar', admDate: '2025-02-10', shift: 'Night', phone: '9900112233', notes: '' },
-    21: { name: 'Riya Mishra', admDate: '2025-04-12', shift: 'Morning', phone: '9955443322', notes: '' },
+  const sd = {
+    1:  { Morning: { name: 'Arjun Sharma',  admDate: '2025-01-10', phone: '9876543210', notes: '' } },
+    2:  { Evening: { name: 'Priya Verma',   admDate: '2025-02-15', phone: '9988776655', notes: '' } },
+    3:  { Morning: { name: 'Rahul Singh',   admDate: '2025-01-20', phone: '9123456789', notes: '' },
+          Evening: { name: 'Neha Soni',     admDate: '2025-03-01', phone: '9011111111', notes: '' } },
+    5:  { Night:   { name: 'Ananya Gupta',  admDate: '2025-03-05', phone: '9011223344', notes: '' } },
+    7:  { Morning: { name: 'Vikram Patel',  admDate: '2025-02-28', phone: '9876512345', notes: '' } },
+    10: { Evening: { name: 'Sneha Yadav',   admDate: '2025-04-01', phone: '9871234560', notes: '' } },
+    12: { Morning: { name: 'Rohan Tiwari',  admDate: '2025-01-15', phone: '9887766554', notes: '' },
+          Night:   { name: 'Suraj Kumar',   admDate: '2025-02-20', phone: '9900000001', notes: '' } },
+    15: { Morning: { name: 'Kavita Joshi',  admDate: '2025-03-20', phone: '9012345678', notes: '' } },
+    18: { Night:   { name: 'Amit Kumar',    admDate: '2025-02-10', phone: '9900112233', notes: '' } },
+    21: { Morning: { name: 'Riya Mishra',   admDate: '2025-04-12', phone: '9955443322', notes: '' } }
   };
-  DB.setStudents(sampleStudents);
+  DB.setStudents(sd);
 
   const now = new Date();
-  const curM = now.getMonth() + 1;
-  const curY = now.getFullYear();
-  const prevM = curM === 1 ? 12 : curM - 1;
-  const prevY = curM === 1 ? curY - 1 : curY;
+  const curM = now.getMonth() + 1, curY = now.getFullYear();
+  const prevM = curM === 1 ? 12 : curM - 1, prevY = curM === 1 ? curY - 1 : curY;
+  const today = now.toISOString().split('T')[0];
+  const prevDate = new Date(prevY, prevM - 1, 5).toISOString().split('T')[0];
 
-  const sampleFees = [];
-  const addFee = (seat, amount, month, year, paidDate, shift) => {
-    sampleFees.push({ id: DB.newFeeId(), seat, amount, month, year, paidDate, shift, studentName: sampleStudents[seat]?.name || '', note: '', createdAt: new Date().toISOString() });
-  };
+  const fees = [];
+  const af = (seat, shift, amt, month, year, date, name) =>
+    fees.push({ id: DB.newFeeId(), seat, shift, amount: amt, month, year, paidDate: date, studentName: name, note: '', createdAt: new Date().toISOString() });
 
-  // Current month fees (some paid)
-  [[1,500,'Morning'],[2,500,'Evening'],[3,800,'Double Shift'],[7,500,'Morning'],[10,500,'Evening']].forEach(([seat,amt,shift]) => {
-    addFee(seat, amt, curM, curY, now.toISOString().split('T')[0], shift);
-  });
-  // Previous month fees
-  [[1,500,'Morning'],[2,500,'Evening'],[3,800,'Double Shift'],[5,500,'Night'],[7,500,'Morning'],[12,500,'Morning'],[15,800,'Double Shift']].forEach(([seat,amt,shift]) => {
-    const d = new Date(prevY, prevM-1, 5).toISOString().split('T')[0];
-    addFee(seat, amt, prevM, prevY, d, shift);
-  });
-  DB.setFees(sampleFees);
-  DB.addActivity('🚀', 'LibraNova initialized with sample data');
+  af(1,'Morning',500,curM,curY,today,'Arjun Sharma');
+  af(3,'Morning',500,curM,curY,today,'Rahul Singh');
+  af(7,'Morning',500,curM,curY,today,'Vikram Patel');
+  af(10,'Evening',500,curM,curY,today,'Sneha Yadav');
+  af(12,'Morning',500,curM,curY,today,'Rohan Tiwari');
+
+  af(1,'Morning',500,prevM,prevY,prevDate,'Arjun Sharma');
+  af(2,'Evening',500,prevM,prevY,prevDate,'Priya Verma');
+  af(3,'Morning',500,prevM,prevY,prevDate,'Rahul Singh');
+  af(3,'Evening',500,prevM,prevY,prevDate,'Neha Soni');
+  af(5,'Night',500,prevM,prevY,prevDate,'Ananya Gupta');
+  af(7,'Morning',500,prevM,prevY,prevDate,'Vikram Patel');
+  af(12,'Morning',500,prevM,prevY,prevDate,'Rohan Tiwari');
+  af(12,'Night',500,prevM,prevY,prevDate,'Suraj Kumar');
+
+  DB.setFees(fees);
+  DB.addActivity('🚀', 'Shiva Digital Library — System ready!');
 })();
