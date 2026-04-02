@@ -128,7 +128,7 @@ body {
   min-height: 100vh; display: flex; align-items: center;
   justify-content: space-between; padding: 7rem 4rem 4rem;
   position: relative; overflow: hidden; gap: 2rem;
-  background-image: url('https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=1600&q=80');
+  background-image: url('https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=1600&q=80');
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
@@ -705,8 +705,12 @@ body {
   .hero-title { font-size: 2rem; }
   .search-row { flex-direction: column; }
   .btn-search { width: 100%; }
-  .navbar { padding: 0 1rem; }
-  .nav-center { display: none; }
+  .navbar { padding: 0 .75rem; height: auto; flex-wrap: wrap; gap: .4rem; padding-top: .5rem; padding-bottom: .5rem; }
+  .nav-center { display: flex; gap: .75rem; order: 3; width: 100%; justify-content: center; border-top: 1px solid var(--border); padding-top: .4rem; padding-bottom: .2rem; }
+  .nav-brand { flex: 1; }
+  .stat-num { font-size: .95rem; }
+  .stat-lbl { font-size: .55rem; }
+  .nav-divider { height: 22px; }
   .container { padding: 0 1rem; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .admin-main { overflow: hidden; }
@@ -720,6 +724,7 @@ body {
   .admin-overlay { position: fixed; }
   .seats-section, .results-section { padding: 3rem 0; }
   .tab-header { flex-direction: column; }
+  .hero { padding-top: 8rem; }
 }
 
 @media(max-width: 480px) {
@@ -737,7 +742,98 @@ body {
 /* Select options theming */
 select option { background: var(--bg-card); color: var(--text-primary); }
 
-/* Empty state */
-.empty-state { text-align: center; padding: 3rem; color: var(--text-muted); }
-.empty-state .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
-.empty-state p { font-size: .9rem; }
+/* ============================================================ SEAT GRID - NEW SHIFT STYLE */
+.seat-btn-new {
+  aspect-ratio: unset !important;
+  height: auto !important;
+  min-height: 110px;
+  padding: 8px 6px 6px !important;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.seat-btn-new .seat-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: .82rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 3px;
+}
+
+.shift-rows {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shift-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: .6rem;
+  width: 100%;
+}
+
+.shift-row span:first-child { font-size: .65rem; flex-shrink: 0; }
+
+.sr-name {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .6rem;
+}
+
+.sr-name.gray { color: var(--text-muted); }
+
+.sr-status {
+  font-size: .65rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sr-empty { background: rgba(255,255,255,.03); color: var(--text-muted); }
+.sr-paid  { background: rgba(0,229,160,.12);   color: var(--green); }
+.sr-pending { background: rgba(255,77,106,.12); color: var(--red); }
+
+/* mixed = some paid some pending — orange border */
+.seat-btn.mixed {
+  border-color: var(--orange);
+  background: rgba(255,159,67,.08);
+  color: var(--orange);
+}
+.seat-btn.mixed:hover { transform: scale(1.05); box-shadow: 0 4px 20px rgba(255,159,67,.25); }
+
+/* Mini seat mixed */
+.mini-seat.mixed { background: rgba(255,159,67,.15); border-color: var(--orange); color: var(--orange); }
+
+/* Modal shift block */
+.modal-shift-block {
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.modal-shift-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .6rem 1rem;
+  background: var(--bg-card2);
+  font-size: .85rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Seat grid responsive for new cards */
+@media(max-width: 480px) {
+  .seat-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 6px; }
+  .seat-btn-new { min-height: 95px; padding: 5px 4px 4px !important; }
+  .sr-name { font-size: .52rem; }
+  .shift-row { padding: 1px 3px; }
+}
